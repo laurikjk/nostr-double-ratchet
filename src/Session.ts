@@ -36,6 +36,10 @@ export class Session {
     this.name = Math.random().toString(36).substring(2, 6);
   }
 
+  static decryptEventWithState(state: SessionState, event: VerifiedEvent): Rumor | null {
+    // TODO
+  }
+
   /**
    * Initializes a new secure communication session
    * @param nostrSubscribe Function to subscribe to Nostr events. Make sure it deduplicates events (doesnt return the same event twice), otherwise you'll see decryption errors!
