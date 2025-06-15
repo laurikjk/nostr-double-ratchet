@@ -37,7 +37,8 @@ export class Session {
   }
 
   static decryptEventWithState(state: SessionState, event: VerifiedEvent): Rumor | null {
-    // TODO
+    const session = new Session(() => () => {}, state);
+    return session.decryptEvent(event);
   }
 
   /**
@@ -187,6 +188,42 @@ export class Session {
     this.internalSubscriptions.clear();
   }
 
+  decryptEvent(event: VerifiedEvent): Rumor | null {
+    return this.decryptEventInternal(event);
+  }
+
+  private decryptEventInternal(e: VerifiedEvent): Rumor | null {
+    const [header, shouldRatchet, isSkipped] = this.decryptHeader(e);
+
+    if (!isSkipped) {
+      if (this.state.theirNextNostrPublicKey !== header.nextPublicKey) {
+        this.state.theirCurrentNostrPublicKey = this.state.theirNextNostrPublicKey;
+        this.state.theirNextNostrPublicKey = header.nextPublicKey;
+      }
+
+      if (shouldRatchet) {
+        this.skipMessageKeys(header.previousChainLength, e.pubkey);
+        this.ratchetStep();
+      }
+    } else {
+      if (!this.state.skippedKeys[e.pubkey]?.messageKeys[header.number]) {
+        return null;
+      }
+    }
+
+    const text = this.ratchetDecrypt(header, e.content, e.pubkey);
+    const innerEvent = JSON.parse(text);
+    if (!validateEvent(innerEvent)) {
+      return null;
+    }
+
+    if (innerEvent.id !== getEventHash(innerEvent)) {
+      return null;
+    }
+
+    return innerEvent as Rumor;
+  }
+
   // 2. RATCHET FUNCTIONS
   private ratchetEncrypt(plaintext: string): [Header, string] {
     const [newSendingChainKey, messageKey] = kdf(this.state.sendingChainKey!, new Uint8Array([1]), 2);
@@ -324,42 +361,20 @@ export class Session {
   }
 
   private handleNostrEvent(e: { tags: string[][]; pubkey: string; content: string }) {
-    const [header, shouldRatchet, isSkipped] = this.decryptHeader(e);
+    const oldNextKey = this.state.theirNextNostrPublicKey;
+    const innerEvent = this.decryptEventInternal(e as VerifiedEvent);
+    if (!innerEvent) return;
 
-    if (!isSkipped) {
-      if (this.state.theirNextNostrPublicKey !== header.nextPublicKey) {
-        this.state.theirCurrentNostrPublicKey = this.state.theirNextNostrPublicKey;
-        this.state.theirNextNostrPublicKey = header.nextPublicKey;
-        this.nostrUnsubscribe?.();
-        this.nostrUnsubscribe = this.nostrNextUnsubscribe;
-        this.nostrNextUnsubscribe = this.nostrSubscribe(
-          {authors: [this.state.theirNextNostrPublicKey], kinds: [MESSAGE_EVENT_KIND]},
-          (e) => this.handleNostrEvent(e)
-        );
-      }
-  
-      if (shouldRatchet) {
-        this.skipMessageKeys(header.previousChainLength, e.pubkey);
-        this.ratchetStep();
-      }
-    } else {
-      if (!this.state.skippedKeys[e.pubkey]?.messageKeys[header.number]) {
-        // Maybe we already processed this message — no error
-        return
-      }
+    if (oldNextKey !== this.state.theirNextNostrPublicKey) {
+      this.nostrUnsubscribe?.();
+      this.nostrUnsubscribe = this.nostrNextUnsubscribe;
+      this.nostrNextUnsubscribe = this.nostrSubscribe(
+        {authors: [this.state.theirNextNostrPublicKey], kinds: [MESSAGE_EVENT_KIND]},
+        (ev) => this.handleNostrEvent(ev)
+      );
     }
 
-    const text = this.ratchetDecrypt(header, e.content, e.pubkey);
-    const innerEvent = JSON.parse(text);
-    if (!validateEvent(innerEvent)) {
-      return;
-    }
-
-    if (innerEvent.id !== getEventHash(innerEvent)) {
-      return;
-    }
-
-    this.internalSubscriptions.forEach(callback => callback(innerEvent, e as VerifiedEvent));  
+    this.internalSubscriptions.forEach(callback => callback(innerEvent, e as VerifiedEvent));
   }
 
   private subscribeToNostrEvents() {
