@@ -111,6 +111,9 @@ export class UserRecord {
 
     // Set the new session as active
     session.name = deviceId; // Ensure session name matches deviceId
+    if (!session.peerDeviceId) {
+      session.setPeerDeviceId(deviceId);
+    }
     device.activeSession = session;
     device.lastActivity = Date.now();
   }
@@ -329,7 +332,8 @@ export class UserRecord {
       ourCurrentPrivateKey,
       isInitiator,
       sharedSecret,
-      name || deviceId
+      name || deviceId,
+      deviceId
     );
 
     this.upsertSession(deviceId, session);

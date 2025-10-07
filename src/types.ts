@@ -21,6 +21,9 @@ export interface SessionState {
   /** Root key used to derive new sending / receiving chain keys */
   rootKey: Uint8Array;
   
+  /** Optional identifier for the peer device that this session communicates with */
+  peerDeviceId?: string;
+
   /** The other party's current Nostr public key */
   theirCurrentNostrPublicKey?: string;
 

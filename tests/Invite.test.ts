@@ -247,7 +247,7 @@ describe('Invite', () => {
     expect(event.tags).toEqual([['p', invite.inviterEphemeralPublicKey]])
   })
 
-  it('should pass deviceId to onSession callback', async () => {
+  it('should embed deviceId in session returned via onSession callback', async () => {
     const alicePrivateKey = generateSecretKey()
     const alicePublicKey = getPublicKey(alicePrivateKey)
     const invite = Invite.createNew(alicePublicKey)
@@ -274,10 +274,10 @@ describe('Invite', () => {
     await new Promise(resolve => setTimeout(resolve, 100))
 
     expect(onSession).toHaveBeenCalledTimes(1)
-    const [session, identity, deviceId] = onSession.mock.calls[0]
+    const [session, identity] = onSession.mock.calls[0]
     expect(session).toBeDefined()
     expect(identity).toBe(bobPublicKey)
-    expect(deviceId).toBe('device-1')
+    expect(session.peerDeviceId).toBe('device-1')
   })
 
   it('should use event.id as session name regardless of deviceId', async () => {
@@ -334,10 +334,10 @@ describe('Invite', () => {
     await new Promise(resolve => setTimeout(resolve, 100))
 
     expect(onSession).toHaveBeenCalledTimes(1)
-    const [session, identity, deviceId] = onSession.mock.calls[0]
+    const [session, identity] = onSession.mock.calls[0]
     expect(session).toBeDefined()
     expect(identity).toBe(bobPublicKey)
-    expect(deviceId).toBeUndefined()
+    expect(session.peerDeviceId).toBeUndefined()
     expect(session.name).toBe(event.id)
   })
 
@@ -370,11 +370,13 @@ describe('Invite', () => {
     const calls = onSession.mock.calls
     const bobCall = calls.find(([, identity]) => identity === bobPublicKey)
     const charlieCall = calls.find(([, identity]) => identity === charliePublicKey)
-    
-    expect(bobCall[2]).toBeUndefined() // no deviceId
-    expect(bobCall[0].name).toBe(bobEvent.id) // session name is event ID
-    
-    expect(charlieCall[2]).toBe('device-1') // has deviceId
-    expect(charlieCall[0].name).toBe(charlieEvent.id) // session name is event ID
+
+    const bobSession = bobCall?.[0] as Session | undefined
+    expect(bobSession?.peerDeviceId).toBeUndefined() // no deviceId
+    expect(bobSession?.name).toBe(bobEvent.id) // session name is event ID
+
+    const charlieSession = charlieCall?.[0] as Session | undefined
+    expect(charlieSession?.peerDeviceId).toBe('device-1') // has deviceId
+    expect(charlieSession?.name).toBe(charlieEvent.id) // session name is event ID
   })
 })

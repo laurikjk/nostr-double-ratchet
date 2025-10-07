@@ -242,7 +242,15 @@ export class Invite {
         const inviterPublicKey = this.inviter || this.inviterEphemeralPublicKey;
 
         const sharedSecret = hexToBytes(this.sharedSecret);
-        const session = Session.init(nostrSubscribe, this.inviterEphemeralPublicKey, inviteeSessionKey, true, sharedSecret, undefined);
+        const session = Session.init(
+            nostrSubscribe,
+            this.inviterEphemeralPublicKey,
+            inviteeSessionKey,
+            true,
+            sharedSecret,
+            undefined,
+            this.deviceId
+        );
 
         // should we take only Encrypt / Decrypt functions, not keys, to make it simpler and with less imports here?
         // common implementation problem: plaintext, pubkey params in different order
@@ -278,7 +286,7 @@ export class Invite {
         return { session, event: finalizeEvent(envelope, randomSenderKey) };
     }
 
-    listen(decryptor: Uint8Array | DecryptFunction, nostrSubscribe: NostrSubscribe, onSession: (_session: Session, _identity: string, _deviceId?: string) => void): Unsubscribe {
+    listen(decryptor: Uint8Array | DecryptFunction, nostrSubscribe: NostrSubscribe, onSession: (_session: Session, _identity: string) => void): Unsubscribe {
         if (!this.inviterEphemeralPrivateKey) {
             throw new Error("Inviter session key is not available");
         }
@@ -324,9 +332,19 @@ export class Invite {
                 }
 
                 const name = event.id;
-                const session = Session.init(nostrSubscribe, inviteeSessionPublicKey, this.inviterEphemeralPrivateKey!, false, sharedSecret, name);
+                const session = Session.init(
+                    nostrSubscribe,
+                    inviteeSessionPublicKey,
+                    this.inviterEphemeralPrivateKey!,
+                    false,
+                    sharedSecret,
+                    name,
+                    deviceId
+                );
 
-                onSession(session, inviteeIdentity, deviceId);
+                session.setPeerDeviceId(deviceId);
+
+                onSession(session, inviteeIdentity);
             } catch {
             }
         });

@@ -15,8 +15,10 @@ function createStubSession() {
     name: 'stub',
     state: {
       theirNextNostrPublicKey: 'mock-their-next-key',
-      ourCurrentNostrKey: { publicKey: 'mock-our-current-key' }
+      ourCurrentNostrKey: { publicKey: 'mock-our-current-key' },
+      peerDeviceId: undefined,
     },
+    peerDeviceId: undefined,
     sendEvent: vi.fn().mockImplementation((event: any) => {
       // Simulate returning an encrypted event wrapper
       return { event: { ...event, id: 'id-' + Math.random().toString(36).slice(2) } }
@@ -26,6 +28,10 @@ function createStubSession() {
       return () => {}
     }),
     close: vi.fn(),
+    setPeerDeviceId: vi.fn().mockImplementation((id?: string) => {
+      stub.peerDeviceId = id
+      stub.state.peerDeviceId = id
+    }),
     // Helper to emit an incoming event for tests
     _emit: (event: any) => {
       callbacks.forEach((cb) => cb(event))

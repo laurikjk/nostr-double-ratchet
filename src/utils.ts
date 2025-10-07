@@ -10,6 +10,7 @@ export function serializeSessionState(state: SessionState): string {
   return JSON.stringify({
     version: VERSION_NUMBER,
     rootKey: bytesToHex(state.rootKey),
+    peerDeviceId: state.peerDeviceId,
     theirCurrentNostrPublicKey: state.theirCurrentNostrPublicKey,
     theirNextNostrPublicKey: state.theirNextNostrPublicKey,
     ourCurrentNostrKey: state.ourCurrentNostrKey ? {
@@ -76,7 +77,8 @@ export function deserializeSessionState(data: string): SessionState {
       sendingChainMessageNumber: state.sendingChainMessageNumber,
       receivingChainMessageNumber: state.receivingChainMessageNumber,
       previousSendingChainMessageCount: state.previousSendingChainMessageCount,
-      skippedKeys
+      skippedKeys,
+      peerDeviceId: state.peerDeviceId
     };
   }
   
@@ -112,6 +114,7 @@ export function deserializeSessionState(data: string): SessionState {
         }
       ])
     ),
+    peerDeviceId: state.peerDeviceId
   };
 }
 

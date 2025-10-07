@@ -30,10 +30,12 @@ export class Session {
   private internalSubscriptions = new Map<number, EventCallback>();
   private currentInternalSubscriptionId = 0;
   public name: string;
+  public peerDeviceId?: string;
 
   // 1. CHANNEL PUBLIC INTERFACE
   constructor(private nostrSubscribe: NostrSubscribe, public state: SessionState) {
     this.name = Math.random().toString(36).substring(2, 6);
+    this.peerDeviceId = state.peerDeviceId;
   }
 
   /**
@@ -52,7 +54,8 @@ export class Session {
     ourEphemeralNostrPrivateKey: Uint8Array,
     isInitiator: boolean,
     sharedSecret: Uint8Array,
-    name?: string
+    name?: string,
+    peerDeviceId?: string
   ): Session {
     const ourNextPrivateKey = generateSecretKey();
     
@@ -92,11 +95,18 @@ export class Session {
       receivingChainMessageNumber: 0,
       previousSendingChainMessageCount: 0,
       skippedKeys: {},
+      peerDeviceId,
     };
     
     const session = new Session(nostrSubscribe, state);
     if (name) session.name = name;
+    session.setPeerDeviceId(peerDeviceId);
     return session;
+  }
+
+  setPeerDeviceId(peerDeviceId?: string) {
+    this.peerDeviceId = peerDeviceId;
+    this.state.peerDeviceId = peerDeviceId;
   }
 
   /**
@@ -358,7 +368,13 @@ export class Session {
 
       this.internalSubscriptions.forEach(callback => callback(innerEvent, e as VerifiedEvent));  
     } catch (error) {
-      if (error instanceof Error && error.message.includes("Failed to decrypt header")) {
+      console.warn("error handling nostr event", error);
+      if (
+        error instanceof Error && (
+          error.message.includes("Failed to decrypt header") ||
+          error.message.includes("invalid MAC")
+        )
+      ) {
         return;
       }
       throw error;

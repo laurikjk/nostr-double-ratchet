@@ -82,9 +82,9 @@ export default class SessionManager {
             this.nostrSubscribe,
             (session, inviteePubkey) => {
                 if (!inviteePubkey) return
-                
+
                 const targetUserKey = inviteePubkey
-                
+
                 try {
                     let userRecord = this.userRecords.get(targetUserKey)
                     if (!userRecord) {
@@ -92,7 +92,7 @@ export default class SessionManager {
                         this.userRecords.set(targetUserKey, userRecord)
                     }
 
-                    const deviceKey = session.name || 'unknown'
+                    const deviceKey = session.peerDeviceId || session.name || 'unknown'
                     userRecord.upsertSession(deviceKey, session)
                     this.saveSession(targetUserKey, deviceKey, session)
 
@@ -106,13 +106,13 @@ export default class SessionManager {
         // 3. Subscribe to our own invites from other devices
         Invite.fromUser(ourPublicKey, this.nostrSubscribe, async (invite) => {
             try {
-                const inviteDeviceId = invite['deviceId'] || 'unknown'
-                if (!inviteDeviceId || inviteDeviceId === this.deviceId) {
+                const inviteDeviceId = invite['deviceId']
+                if (inviteDeviceId && inviteDeviceId === this.deviceId) {
                     return
                 }
 
                 const existingRecord = this.userRecords.get(ourPublicKey)
-                if (existingRecord?.getActiveSessions().some(session => session.name === inviteDeviceId)) {
+                if (inviteDeviceId && existingRecord?.getActiveSessions().some(session => (session.peerDeviceId || session.name) === inviteDeviceId)) {
                     return
                 }
 
@@ -123,14 +123,12 @@ export default class SessionManager {
                 )
                 this.nostrPublish(event)?.catch(() => {})
 
-                this.saveSession(ourPublicKey, inviteDeviceId, session)
-
                 let userRecord = this.userRecords.get(ourPublicKey)
                 if (!userRecord) {
                     userRecord = new UserRecord(ourPublicKey, this.nostrSubscribe)
                     this.userRecords.set(ourPublicKey, userRecord)
                 }
-                const deviceId = invite['deviceId'] || event.id || 'unknown'
+                const deviceId = session.peerDeviceId || invite['deviceId'] || event.id || 'unknown'
                 userRecord.upsertSession(deviceId, session)
                 this.saveSession(ourPublicKey, deviceId, session)
 
@@ -274,12 +272,12 @@ export default class SessionManager {
 
         const unsubscribe = Invite.fromUser(userPubkey, this.nostrSubscribe, async (_invite) => {
             try {
-                const deviceId = (_invite instanceof Invite && _invite.deviceId) ? _invite.deviceId : 'unknown'
-                
+                const inviteDeviceId = (_invite instanceof Invite && _invite.deviceId) ? _invite.deviceId : undefined
+
                 const userRecord = this.userRecords.get(userPubkey)
                 if (userRecord) {
                     const existingSessions = userRecord.getActiveSessions()
-                    if (existingSessions.some(session => session.name === deviceId)) {
+                    if (inviteDeviceId && existingSessions.some(session => (session.peerDeviceId || session.name) === inviteDeviceId)) {
                         return // Already have session with this device
                     }
                 }
@@ -297,8 +295,9 @@ export default class SessionManager {
                     currentUserRecord = new UserRecord(userPubkey, this.nostrSubscribe)
                     this.userRecords.set(userPubkey, currentUserRecord)
                 }
-                currentUserRecord.upsertSession(deviceId, session)
-                this.saveSession(userPubkey, deviceId, session)
+                const sessionDeviceId = session.peerDeviceId || inviteDeviceId || event.id || 'unknown'
+                currentUserRecord.upsertSession(sessionDeviceId, session)
+                this.saveSession(userPubkey, sessionDeviceId, session)
 
                 // Register all existing callbacks on the new session
                 session.onEvent((_event: Rumor) => {
