@@ -319,7 +319,40 @@ export class Session {
     throw new Error("Failed to decrypt header with current and skipped header keys");
   }
 
+  private deepCopyState(): SessionState {
+  return {
+    rootKey: new Uint8Array(this.state.rootKey),
+    theirNextNostrPublicKey: this.state.theirNextNostrPublicKey,
+    ourCurrentNostrKey: this.state.ourCurrentNostrKey ? {
+    publicKey: this.state.ourCurrentNostrKey.publicKey,
+    privateKey: new Uint8Array(this.state.ourCurrentNostrKey.privateKey)
+    } : undefined,
+    ourNextNostrKey: {
+    publicKey: this.state.ourNextNostrKey.publicKey,
+    privateKey: new Uint8Array(this.state.ourNextNostrKey.privateKey)
+    },
+    receivingChainKey: this.state.receivingChainKey ? new Uint8Array(this.state.receivingChainKey) : undefined,
+    sendingChainKey: this.state.sendingChainKey ? new Uint8Array(this.state.sendingChainKey) : undefined,
+    sendingChainMessageNumber: this.state.sendingChainMessageNumber,
+    receivingChainMessageNumber: this.state.receivingChainMessageNumber,
+    previousSendingChainMessageCount: this.state.previousSendingChainMessageCount,
+    skippedKeys: Object.fromEntries(
+    Object.entries(this.state.skippedKeys).map(([author, {headerKeys, messageKeys}]) => [
+      author,
+      {
+        headerKeys: headerKeys.map(key => new Uint8Array(key)),
+        messageKeys: Object.fromEntries(
+          Object.entries(messageKeys).map(([num, key]) => [num, new Uint8Array(key)])
+        )
+      }
+    ])
+    )
+  };
+    }
+
   private handleNostrEvent(e: { tags: string[][]; pubkey: string; content: string }) {
+    const prevState = this.deepCopyState();
+    //console.warn("COPIUED STATE", prevState);
     try {
       const [header, shouldRatchet, isSkipped] = this.decryptHeader(e);
 
@@ -358,6 +391,13 @@ export class Session {
 
       this.internalSubscriptions.forEach(callback => callback(innerEvent, e as VerifiedEvent));  
     } catch (error) {
+
+      console.warn("differences between states", JSON.stringify(prevState) === JSON.stringify(this.state) ? "no differences" : {
+        prevState,
+        currentState: this.state
+      });
+
+      this.state = prevState;
       if (error instanceof Error && error.message.includes("Failed to decrypt header")) {
         return;
       }
