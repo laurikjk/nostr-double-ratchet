@@ -1,3 +1,5 @@
+console.warn("[nostr-double-ratchet] Using LINKED SessionManager")
+
 import {
   DecryptFunction,
   NostrSubscribe,
@@ -12,14 +14,8 @@ import { Invite } from "./Invite"
 import { Session } from "./Session"
 import { getEventHash, VerifiedEvent } from "nostr-tools"
 import { DeviceRecord, rotateSession } from "./DeviceRecord"
-import {
-  UserRecord,
-  StoredUserRecord,
-  createUserRecord,
-  getOrCreateDevice,
-  serializeUserRecord,
-  deserializeUserRecord,
-} from "./UserRecord"
+import { UserRecord, StoredUserRecord, getOrCreateDevice } from "./UserRecord"
+import { UserRecordStore } from "./UserRecordStore"
 
 export type OnEventCallback = (event: Rumor, from: string) => void
 
@@ -37,7 +33,7 @@ export class SessionManager {
   private ourPublicKey: string
 
   // Data
-  private userRecords: Map<string, UserRecord> = new Map()
+  private userRecordStore: UserRecordStore
   private messageHistory: Map<string, Rumor[]> = new Map()
   private currentDeviceInvite: Invite | null = null
 
@@ -62,7 +58,6 @@ export class SessionManager {
     nostrPublish: NostrPublish,
     storage?: StorageAdapter
   ) {
-    this.userRecords = new Map()
     this.nostrSubscribe = nostrSubscribe
     this.nostrPublish = nostrPublish
     this.ourPublicKey = ourPublicKey
@@ -70,6 +65,7 @@ export class SessionManager {
     this.deviceId = deviceId
     this.storage = storage || new InMemoryStorageAdapter()
     this.versionPrefix = `v${this.storageVersion}`
+    this.userRecordStore = new UserRecordStore(this.storage, this.versionPrefix)
   }
 
   async init() {
@@ -139,12 +135,7 @@ export class SessionManager {
   // User and Device Records helpers
   // -------------------
   private getOrCreateUserRecord(userPubkey: string): UserRecord {
-    let rec = this.userRecords.get(userPubkey)
-    if (!rec) {
-      rec = createUserRecord(userPubkey)
-      this.userRecords.set(userPubkey, rec)
-    }
-    return rec
+    return this.userRecordStore.getOrCreate(userPubkey)
   }
 
   private upsertDeviceRecord(userRecord: UserRecord, deviceId: string): DeviceRecord {
@@ -209,13 +200,6 @@ export class SessionManager {
     return `${this.versionPrefix}/session/${userPubkey}/`
   }
 
-  private userRecordKey(publicKey: string) {
-    return `${this.userRecordKeyPrefix()}${publicKey}`
-  }
-
-  private userRecordKeyPrefix() {
-    return `${this.versionPrefix}/user/`
-  }
   private versionKey() {
     return `storage-version`
   }
@@ -247,9 +231,9 @@ export class SessionManager {
     const unsub = session.onEvent((event) => {
       for (const cb of this.internalSubscriptions) cb(event, userPubkey)
       rotateSession(deviceRecord, session)
-      this.storeUserRecord(userPubkey).catch(console.error)
+      this.userRecordStore.save(userPubkey).catch(console.error)
     })
-    this.storeUserRecord(userPubkey).catch(console.error)
+    this.userRecordStore.save(userPubkey).catch(console.error)
     this.sessionSubscriptions.set(key, unsub)
   }
 
@@ -330,7 +314,7 @@ export class SessionManager {
   }
 
   getUserRecords(): Map<string, UserRecord> {
-    return this.userRecords
+    return this.userRecordStore.getAll()
   }
 
   close() {
@@ -351,7 +335,7 @@ export class SessionManager {
   }
 
   deactivateCurrentSessions(publicKey: string) {
-    const userRecord = this.userRecords.get(publicKey)
+    const userRecord = this.userRecordStore.get(publicKey)
     if (!userRecord) return
     for (const device of userRecord.devices.values()) {
       if (device.activeSession) {
@@ -359,13 +343,13 @@ export class SessionManager {
         device.activeSession = undefined
       }
     }
-    this.storeUserRecord(publicKey).catch(console.error)
+    this.userRecordStore.save(publicKey).catch(console.error)
   }
 
   async deleteUser(userPubkey: string): Promise<void> {
     await this.init()
 
-    const userRecord = this.userRecords.get(userPubkey)
+    const userRecord = this.userRecordStore.get(userPubkey)
 
     if (userRecord) {
       for (const device of userRecord.devices.values()) {
@@ -382,7 +366,7 @@ export class SessionManager {
         }
       }
 
-      this.userRecords.delete(userPubkey)
+      this.userRecordStore.delete(userPubkey)
     }
 
     const inviteKey = this.inviteKey(userPubkey)
@@ -403,7 +387,7 @@ export class SessionManager {
     await Promise.allSettled([
       this.storage.del(this.inviteKey(userPubkey)),
       this.deleteUserSessionsFromStorage(userPubkey),
-      this.storage.del(this.userRecordKey(userPubkey)),
+      this.userRecordStore.deleteFromStorage(userPubkey),
     ])
   }
 
@@ -431,7 +415,7 @@ export class SessionManager {
     deviceId: string
   ): Promise<void> {
     const history = this.messageHistory.get(recipientPublicKey) || []
-    const userRecord = this.userRecords.get(recipientPublicKey)
+    const userRecord = this.userRecordStore.get(recipientPublicKey)
     if (!userRecord) {
       return
     }
@@ -448,7 +432,7 @@ export class SessionManager {
       if (!activeSession) continue
       const { event: verifiedEvent } = activeSession.sendEvent(event)
       await this.nostrPublish(verifiedEvent)
-      await this.storeUserRecord(recipientPublicKey)
+      await this.userRecordStore.save(recipientPublicKey)
     }
   }
 
@@ -487,7 +471,7 @@ export class SessionManager {
       })
     )
       .then(() => {
-        this.storeUserRecord(recipientIdentityKey)
+        this.userRecordStore.save(recipientIdentityKey)
       })
       .catch(console.error)
 
@@ -555,7 +539,7 @@ export class SessionManager {
   }
 
   private async cleanupDevice(publicKey: string, deviceId: string): Promise<void> {
-    const userRecord = this.userRecords.get(publicKey)
+    const userRecord = this.userRecordStore.get(publicKey)
     if (!userRecord) return
     const deviceRecord = userRecord.devices.get(deviceId)
 
@@ -573,7 +557,7 @@ export class SessionManager {
     deviceRecord.inactiveSessions = []
     deviceRecord.staleAt = Date.now()
 
-    await this.storeUserRecord(publicKey).catch(console.error)
+    await this.userRecordStore.save(publicKey).catch(console.error)
   }
 
   private buildMessageTags(
@@ -589,53 +573,25 @@ export class SessionManager {
     return tags
   }
 
-  private storeUserRecord(publicKey: string) {
-    const userRecord = this.userRecords.get(publicKey)
-    if (!userRecord) return Promise.resolve()
-    const data = serializeUserRecord(userRecord)
-    return this.storage.put(this.userRecordKey(publicKey), data)
-  }
+  private async loadAllUserRecords(): Promise<void> {
+    await this.userRecordStore.loadAll(this.nostrSubscribe)
+    for (const [publicKey, userRecord] of this.userRecordStore.getAll()) {
+      if (publicKey !== this.ourPublicKey) {
+        this.attachInviteTombstoneSubscription(publicKey)
+      }
 
-  private loadUserRecord(publicKey: string) {
-    return this.storage
-      .get<StoredUserRecord>(this.userRecordKey(publicKey))
-      .then((data) => {
-        if (!data) return
+      for (const device of userRecord.devices.values()) {
+        const { deviceId, activeSession, inactiveSessions, staleAt } = device
+        if (!deviceId || staleAt !== undefined) continue
 
-        const userRecord = deserializeUserRecord(data, this.nostrSubscribe)
-        this.userRecords.set(publicKey, userRecord)
-
-        if (publicKey !== this.ourPublicKey) {
-          this.attachInviteTombstoneSubscription(publicKey)
+        for (const session of inactiveSessions.reverse()) {
+          this.attachSessionSubscription(publicKey, device, session)
         }
-
-        for (const device of userRecord.devices.values()) {
-          const { deviceId, activeSession, inactiveSessions, staleAt } = device
-          if (!deviceId || staleAt !== undefined) continue
-
-          for (const session of inactiveSessions.reverse()) {
-            this.attachSessionSubscription(publicKey, device, session)
-          }
-          if (activeSession) {
-            this.attachSessionSubscription(publicKey, device, activeSession)
-          }
+        if (activeSession) {
+          this.attachSessionSubscription(publicKey, device, activeSession)
         }
-      })
-      .catch((error) => {
-        console.error(`Failed to load user record for ${publicKey}:`, error)
-      })
-  }
-
-  private loadAllUserRecords() {
-    const prefix = this.userRecordKeyPrefix()
-    return this.storage.list(prefix).then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          const publicKey = key.slice(prefix.length)
-          return this.loadUserRecord(publicKey)
-        })
-      )
-    })
+      }
+    }
   }
 
   private async runMigrations() {
@@ -680,7 +636,7 @@ export class SessionManager {
             const publicKey = key.slice(oldUserRecordPrefix.length)
             const userRecordData = await this.storage.get<StoredUserRecord>(key)
             if (userRecordData) {
-              const newKey = this.userRecordKey(publicKey)
+              const newKey = this.userRecordStore.storageKey(publicKey)
               const newUserRecordData: StoredUserRecord = {
                 publicKey: userRecordData.publicKey,
                 devices: userRecordData.devices.map((device) => ({
