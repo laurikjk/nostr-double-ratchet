@@ -35,7 +35,6 @@
   "devDependencies": {
     "@nostr-dev-kit/ndk": "2.14.23",
     "@types/lodash": "^4.17.17",
-    "nostr-tools": "^2.16.2",
     "@types/node": "^22.15.21",
     "@typescript-eslint/eslint-plugin": "^8.33.1",
     "@typescript-eslint/parser": "^8.33.1",
@@ -54,9 +53,6 @@
     "ws": "^8.18.2"
   },
   "dependencies": {
-    "@noble/hashes": "^1.7.2"
-  },
-  "peerDependencies": {
-    "nostr-tools": ">=2.10.0"
+    "nostr-tools": "^2.15.2"
   }
 }
