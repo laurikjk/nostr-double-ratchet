@@ -10,38 +10,18 @@ import {
 import { StorageAdapter, InMemoryStorageAdapter } from "./StorageAdapter"
 import { Invite } from "./Invite"
 import { Session } from "./Session"
-import { serializeSessionState, deserializeSessionState } from "./utils"
 import { getEventHash, VerifiedEvent } from "nostr-tools"
+import { DeviceRecord, rotateSession } from "./DeviceRecord"
+import {
+  UserRecord,
+  StoredUserRecord,
+  createUserRecord,
+  getOrCreateDevice,
+  serializeUserRecord,
+  deserializeUserRecord,
+} from "./UserRecord"
 
 export type OnEventCallback = (event: Rumor, from: string) => void
-
-interface DeviceRecord {
-  deviceId: string
-  activeSession?: Session
-  inactiveSessions: Session[]
-  createdAt: number
-  staleAt?: number
-}
-
-interface UserRecord {
-  publicKey: string
-  devices: Map<string, DeviceRecord>
-}
-
-type StoredSessionEntry = ReturnType<typeof serializeSessionState>
-
-interface StoredDeviceRecord {
-  deviceId: string
-  activeSession: StoredSessionEntry | null
-  inactiveSessions: StoredSessionEntry[]
-  createdAt: number
-  staleAt?: number
-}
-
-interface StoredUserRecord {
-  publicKey: string
-  devices: StoredDeviceRecord[]
-}
 
 export class SessionManager {
   // Versioning
@@ -161,7 +141,7 @@ export class SessionManager {
   private getOrCreateUserRecord(userPubkey: string): UserRecord {
     let rec = this.userRecords.get(userPubkey)
     if (!rec) {
-      rec = { publicKey: userPubkey, devices: new Map() }
+      rec = createUserRecord(userPubkey)
       this.userRecords.set(userPubkey, rec)
     }
     return rec
@@ -171,18 +151,7 @@ export class SessionManager {
     if (!deviceId) {
       throw new Error("Device record must include a deviceId")
     }
-    const existing = userRecord.devices.get(deviceId)
-    if (existing) {
-      return existing
-    }
-
-    const deviceRecord: DeviceRecord = {
-      deviceId,
-      inactiveSessions: [],
-      createdAt: Date.now(),
-    }
-    userRecord.devices.set(deviceId, deviceRecord)
-    return deviceRecord
+    return getOrCreateDevice(userRecord, deviceId)
   }
 
   private createInviteTombstoneSubscription(authorPublicKey: string): Unsubscribe {
@@ -263,44 +232,21 @@ export class SessionManager {
     const key = this.sessionKey(userPubkey, deviceRecord.deviceId, session.name)
     if (this.sessionSubscriptions.has(key)) return
 
-    const dr = deviceRecord
-    const rotateSession = (nextSession: Session) => {
-      const current = dr.activeSession
-
-      if (!current) {
-        dr.activeSession = nextSession
-        return
-      }
-
-      if (current === nextSession || current.name === nextSession.name) {
-        dr.activeSession = nextSession
-        return
-      }
-
-      dr.inactiveSessions = dr.inactiveSessions.filter(
-        (session) => session !== current && session.name !== current.name
-      )
-
-      dr.inactiveSessions.push(current)
-      dr.inactiveSessions = dr.inactiveSessions.slice(-1)
-      dr.activeSession = nextSession
-    }
-
     if (inactive) {
-      const alreadyTracked = dr.inactiveSessions.some(
+      const alreadyTracked = deviceRecord.inactiveSessions.some(
         (tracked) => tracked === session || tracked.name === session.name
       )
       if (!alreadyTracked) {
-        dr.inactiveSessions.push(session)
-        dr.inactiveSessions = dr.inactiveSessions.slice(-1)
+        deviceRecord.inactiveSessions.push(session)
+        deviceRecord.inactiveSessions = deviceRecord.inactiveSessions.slice(-1)
       }
     } else {
-      rotateSession(session)
+      rotateSession(deviceRecord, session)
     }
 
     const unsub = session.onEvent((event) => {
       for (const cb of this.internalSubscriptions) cb(event, userPubkey)
-      rotateSession(session)
+      rotateSession(deviceRecord, session)
       this.storeUserRecord(userPubkey).catch(console.error)
     })
     this.storeUserRecord(userPubkey).catch(console.error)
@@ -644,22 +590,9 @@ export class SessionManager {
   }
 
   private storeUserRecord(publicKey: string) {
-    const data: StoredUserRecord = {
-      publicKey: publicKey,
-      devices: Array.from(this.userRecords.get(publicKey)?.devices.entries() || []).map(
-        ([, device]) => ({
-          deviceId: device.deviceId,
-          activeSession: device.activeSession
-            ? serializeSessionState(device.activeSession.state)
-            : null,
-          inactiveSessions: device.inactiveSessions.map((session) =>
-            serializeSessionState(session.state)
-          ),
-          createdAt: device.createdAt,
-          staleAt: device.staleAt,
-        })
-      ),
-    }
+    const userRecord = this.userRecords.get(publicKey)
+    if (!userRecord) return Promise.resolve()
+    const data = serializeUserRecord(userRecord)
     return this.storage.put(this.userRecordKey(publicKey), data)
   }
 
@@ -669,54 +602,14 @@ export class SessionManager {
       .then((data) => {
         if (!data) return
 
-        const devices = new Map<string, DeviceRecord>()
-
-        for (const deviceData of data.devices) {
-          const {
-            deviceId,
-            activeSession: serializedActive,
-            inactiveSessions: serializedInactive,
-            createdAt,
-            staleAt,
-          } = deviceData
-
-          try {
-            const activeSession = serializedActive
-              ? new Session(
-                  this.nostrSubscribe,
-                  deserializeSessionState(serializedActive)
-                )
-              : undefined
-
-            const inactiveSessions = serializedInactive.map(
-              (entry) => new Session(this.nostrSubscribe, deserializeSessionState(entry))
-            )
-
-            devices.set(deviceId, {
-              deviceId,
-              activeSession,
-              inactiveSessions,
-              createdAt,
-              staleAt,
-            })
-          } catch (e) {
-            console.error(
-              `Failed to deserialize session for user ${publicKey}, device ${deviceId}:`,
-              e
-            )
-          }
-        }
-
-        this.userRecords.set(publicKey, {
-          publicKey: data.publicKey,
-          devices,
-        })
+        const userRecord = deserializeUserRecord(data, this.nostrSubscribe)
+        this.userRecords.set(publicKey, userRecord)
 
         if (publicKey !== this.ourPublicKey) {
           this.attachInviteTombstoneSubscription(publicKey)
         }
 
-        for (const device of devices.values()) {
+        for (const device of userRecord.devices.values()) {
           const { deviceId, activeSession, inactiveSessions, staleAt } = device
           if (!deviceId || staleAt !== undefined) continue
 
