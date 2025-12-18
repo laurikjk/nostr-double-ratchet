@@ -41,7 +41,7 @@ export interface AcceptParams {
   /** The device ID to accept the invite for */
   deviceId: string;
   /** The invitee's public key */
-  inviteePubkey: string;
+  inviteePublicKey: string;
   /** The invitee's private key */
   inviteePrivateKey: Uint8Array;
   /** Nostr subscription function */
@@ -61,7 +61,7 @@ export interface ListenParams {
   /** Nostr subscription function */
   nostrSubscribe: NostrSubscribe;
   /** Callback when a session is established */
-  onSession: (session: Session, inviteePubkey: string, inviteeDeviceId?: string) => void;
+  onSession: (session: Session, identity: string, inviteeDeviceId?: string) => void;
 }
 
 /**
@@ -301,7 +301,7 @@ export class InviteList {
    * Called by the invitee.
    */
   async accept(params: AcceptParams): Promise<{ session: Session; event: VerifiedEvent }> {
-    const { deviceId, inviteePubkey, inviteePrivateKey, nostrSubscribe, inviteeDeviceId } = params;
+    const { deviceId, inviteePublicKey, inviteePrivateKey, nostrSubscribe, inviteeDeviceId } = params;
 
     const device = this.getDevice(deviceId);
     if (!device) {
@@ -319,10 +319,10 @@ export class InviteList {
     // Create encrypted response
     const { event } = await encryptInviteResponse({
       inviteeSessionPublicKey: sessionKey.publicKey,
-      inviteePubkey,
+      inviteePublicKey,
       inviteePrivateKey,
-      inviterPubkey: this.owner,
-      inviterEphemeralPubkey: device.ephemeralPublicKey,
+      inviterPublicKey: this.owner,
+      inviterEphemeralPublicKey: device.ephemeralPublicKey,
       sharedSecret: device.sharedSecret,
       deviceId: inviteeDeviceId,
     });
@@ -374,7 +374,7 @@ export class InviteList {
           sessionName: event.id,
         });
 
-        onSession(session, result.inviteePubkey, result.deviceId);
+        onSession(session, result.inviteePublicKey, result.deviceId);
       } catch {
         // Silently ignore decryption failures
       }

@@ -86,10 +86,10 @@ describe('inviteUtils', () => {
       // Encrypt
       const { event } = await encryptInviteResponse({
         inviteeSessionPublicKey: inviteeSessionKey.publicKey,
-        inviteePubkey,
+        inviteePublicKey: inviteePubkey,
         inviteePrivateKey,
-        inviterPubkey,
-        inviterEphemeralPubkey: inviterEphemeral.publicKey,
+        inviterPublicKey: inviterPubkey,
+        inviterEphemeralPublicKey: inviterEphemeral.publicKey,
         sharedSecret,
         deviceId,
       })
@@ -105,7 +105,7 @@ describe('inviteUtils', () => {
         sharedSecret,
       })
 
-      expect(result.inviteePubkey).toBe(inviteePubkey)
+      expect(result.inviteePublicKey).toBe(inviteePubkey)
       expect(result.sessionKey).toBe(inviteeSessionKey.publicKey)
       expect(result.deviceId).toBe(deviceId)
     })
@@ -123,10 +123,10 @@ describe('inviteUtils', () => {
 
       const { event } = await encryptInviteResponse({
         inviteeSessionPublicKey: inviteeSessionKey.publicKey,
-        inviteePubkey,
+        inviteePublicKey: inviteePubkey,
         inviteePrivateKey,
-        inviterPubkey,
-        inviterEphemeralPubkey: inviterEphemeral.publicKey,
+        inviterPublicKey: inviterPubkey,
+        inviterEphemeralPublicKey: inviterEphemeral.publicKey,
         sharedSecret,
       })
 
@@ -137,7 +137,7 @@ describe('inviteUtils', () => {
         sharedSecret,
       })
 
-      expect(result.inviteePubkey).toBe(inviteePubkey)
+      expect(result.inviteePublicKey).toBe(inviteePubkey)
       expect(result.sessionKey).toBe(inviteeSessionKey.publicKey)
       expect(result.deviceId).toBeUndefined()
     })
@@ -156,10 +156,10 @@ describe('inviteUtils', () => {
 
       const { event } = await encryptInviteResponse({
         inviteeSessionPublicKey: inviteeSessionKey.publicKey,
-        inviteePubkey,
+        inviteePublicKey: inviteePubkey,
         inviteePrivateKey,
-        inviterPubkey,
-        inviterEphemeralPubkey: inviterEphemeral.publicKey,
+        inviterPublicKey: inviterPubkey,
+        inviterEphemeralPublicKey: inviterEphemeral.publicKey,
         sharedSecret,
       })
 
@@ -185,10 +185,10 @@ describe('inviteUtils', () => {
 
       const { event } = await encryptInviteResponse({
         inviteeSessionPublicKey: inviteeSessionKey.publicKey,
-        inviteePubkey,
+        inviteePublicKey: inviteePubkey,
         inviteePrivateKey,
-        inviterPubkey,
-        inviterEphemeralPubkey: inviterEphemeral.publicKey,
+        inviterPublicKey: inviterPubkey,
+        inviterEphemeralPublicKey: inviterEphemeral.publicKey,
         sharedSecret,
       })
 
@@ -214,10 +214,10 @@ describe('inviteUtils', () => {
 
       const { event } = await encryptInviteResponse({
         inviteeSessionPublicKey: inviteeSessionKey.publicKey,
-        inviteePubkey,
+        inviteePublicKey: inviteePubkey,
         inviteePrivateKey,
-        inviterPubkey,
-        inviterEphemeralPubkey: inviterEphemeral.publicKey,
+        inviterPublicKey: inviterPubkey,
+        inviterEphemeralPublicKey: inviterEphemeral.publicKey,
         sharedSecret,
       })
 

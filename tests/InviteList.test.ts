@@ -477,7 +477,7 @@ describe('InviteList', () => {
 
       const { session, event } = await list.accept({
         deviceId: device.deviceId,
-        inviteePubkey,
+        inviteePublicKey: inviteePubkey,
         inviteePrivateKey: inviteeKey,
         nostrSubscribe: dummySubscribe,
       })
@@ -497,7 +497,7 @@ describe('InviteList', () => {
 
       await expect(list.accept({
         deviceId: 'unknown',
-        inviteePubkey,
+        inviteePublicKey: inviteePubkey,
         inviteePrivateKey: inviteeKey,
         nostrSubscribe: dummySubscribe,
       })).rejects.toThrow()
@@ -518,7 +518,7 @@ describe('InviteList', () => {
       // Create acceptance event
       const { event: acceptEvent } = await list.accept({
         deviceId: device.deviceId,
-        inviteePubkey,
+        inviteePublicKey: inviteePubkey,
         inviteePrivateKey: inviteeKey,
         nostrSubscribe: vi.fn().mockReturnValue(() => {}),
       })
@@ -605,7 +605,7 @@ describe('InviteList', () => {
       // Invitee accepts
       const { session: inviteeSession, event: acceptEvent } = await inviterList.accept({
         deviceId: device.deviceId,
-        inviteePubkey,
+        inviteePublicKey: inviteePubkey,
         inviteePrivateKey: inviteeKey,
         nostrSubscribe: createSubscribe(),
       })

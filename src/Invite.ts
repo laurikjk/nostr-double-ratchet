@@ -286,10 +286,10 @@ export class Invite {
             // Key-based encryptor - use shared utils
             const { event } = await encryptInviteResponse({
                 inviteeSessionPublicKey: sessionKey.publicKey,
-                inviteePubkey: inviteePublicKey,
+                inviteePublicKey: inviteePublicKey,
                 inviteePrivateKey: encryptor,
-                inviterPubkey: inviterPublicKey,
-                inviterEphemeralPubkey: this.inviterEphemeralPublicKey,
+                inviterPublicKey: inviterPublicKey,
+                inviterEphemeralPublicKey: this.inviterEphemeralPublicKey,
                 sharedSecret: this.sharedSecret,
                 deviceId,
             });
@@ -344,7 +344,7 @@ export class Invite {
                         sharedSecret: this.sharedSecret,
                     });
 
-                    inviteeIdentity = result.inviteePubkey;
+                    inviteeIdentity = result.inviteePublicKey;
                     inviteeSessionPublicKey = result.sessionKey;
                     deviceId = result.deviceId;
                 }

@@ -40,10 +40,10 @@ export function generateDeviceId(): string {
 
 export interface EncryptInviteResponseParams {
   inviteeSessionPublicKey: string;
-  inviteePubkey: string;
+  inviteePublicKey: string;
   inviteePrivateKey: Uint8Array;
-  inviterPubkey: string;
-  inviterEphemeralPubkey: string;
+  inviterPublicKey: string;
+  inviterEphemeralPublicKey: string;
   sharedSecret: string;
   deviceId?: string;
 }
@@ -64,10 +64,10 @@ export interface EncryptInviteResponseResult {
 export async function encryptInviteResponse(params: EncryptInviteResponseParams): Promise<EncryptInviteResponseResult> {
   const {
     inviteeSessionPublicKey,
-    inviteePubkey,
+    inviteePublicKey,
     inviteePrivateKey,
-    inviterPubkey,
-    inviterEphemeralPubkey,
+    inviterPublicKey,
+    inviterEphemeralPublicKey,
     sharedSecret,
     deviceId,
   } = params;
@@ -79,11 +79,11 @@ export async function encryptInviteResponse(params: EncryptInviteResponseParams)
     sessionKey: inviteeSessionPublicKey,
     deviceId: deviceId,
   });
-  const dhEncrypted = nip44.encrypt(payload, getConversationKey(inviteePrivateKey, inviterPubkey));
+  const dhEncrypted = nip44.encrypt(payload, getConversationKey(inviteePrivateKey, inviterPublicKey));
 
   // Create inner event (invitee's pubkey is visible here, but wrapped)
   const innerEvent = {
-    pubkey: inviteePubkey,
+    pubkey: inviteePublicKey,
     content: nip44.encrypt(dhEncrypted, sharedSecretBytes),
     created_at: Math.floor(Date.now() / 1000),
   };
@@ -97,9 +97,9 @@ export async function encryptInviteResponse(params: EncryptInviteResponseParams)
   const envelope = {
     kind: INVITE_RESPONSE_KIND,
     pubkey: randomSenderPublicKey,
-    content: nip44.encrypt(innerJson, getConversationKey(randomSenderKey, inviterEphemeralPubkey)),
+    content: nip44.encrypt(innerJson, getConversationKey(randomSenderKey, inviterEphemeralPublicKey)),
     created_at: randomNow(),
-    tags: [['p', inviterEphemeralPubkey]],
+    tags: [['p', inviterEphemeralPublicKey]],
   };
 
   return { event: finalizeEvent(envelope, randomSenderKey) };
@@ -113,7 +113,7 @@ export interface DecryptInviteResponseParams {
 }
 
 export interface DecryptInviteResponseResult {
-  inviteePubkey: string;
+  inviteePublicKey: string;
   sessionKey: string;
   deviceId?: string;
 }
@@ -140,13 +140,13 @@ export async function decryptInviteResponse(params: DecryptInviteResponseParams)
   const decrypted = nip44.decrypt(event.content, getConversationKey(inviterEphemeralPrivateKey, event.pubkey));
   const innerEvent = JSON.parse(decrypted);
 
-  const inviteePubkey = innerEvent.pubkey;
+  const inviteePublicKey = innerEvent.pubkey;
 
   // Decrypt the inner content using shared secret
   const dhEncrypted = nip44.decrypt(innerEvent.content, sharedSecretBytes);
 
   // Decrypt payload with DH(inviter, invitee)
-  const decryptedPayload = nip44.decrypt(dhEncrypted, getConversationKey(inviterPrivateKey, inviteePubkey));
+  const decryptedPayload = nip44.decrypt(dhEncrypted, getConversationKey(inviterPrivateKey, inviteePublicKey));
 
   let sessionKey: string;
   let deviceId: string | undefined;
@@ -160,7 +160,7 @@ export async function decryptInviteResponse(params: DecryptInviteResponseParams)
     sessionKey = decryptedPayload;
   }
 
-  return { inviteePubkey, sessionKey, deviceId };
+  return { inviteePublicKey, sessionKey, deviceId };
 }
 
 export interface CreateSessionFromAcceptParams {
