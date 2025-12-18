@@ -566,6 +566,118 @@ describe('InviteList', () => {
     })
   })
 
+  describe('subscribe', () => {
+    it('calls onList when receiving valid InviteList event', () => {
+      const ownerKey = generateSecretKey()
+      const ownerPubkey = getPublicKey(ownerKey)
+      const device = createDeviceEntry()
+
+      const event = finalizeEvent({
+        kind: INVITE_LIST_KIND,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          ['d', 'double-ratchet/invite-list'],
+          ['device', device.ephemeralPublicKey, device.sharedSecret, device.deviceId, device.label],
+        ],
+        content: '',
+      }, ownerKey)
+
+      const onList = vi.fn()
+      let capturedCallback: (event: any) => void
+
+      const mockSubscribe = vi.fn().mockImplementation((filter: any, callback: (event: any) => void) => {
+        expect(filter.kinds).toEqual([INVITE_LIST_KIND])
+        expect(filter.authors).toEqual([ownerPubkey])
+        expect(filter['#d']).toEqual(['double-ratchet/invite-list'])
+        capturedCallback = callback
+        return () => {}
+      })
+
+      InviteList.subscribe(ownerPubkey, mockSubscribe, onList)
+      capturedCallback!(event)
+
+      expect(onList).toHaveBeenCalledTimes(1)
+      const receivedList = onList.mock.calls[0][0]
+      expect(receivedList.owner).toBe(ownerPubkey)
+      expect(receivedList.getAllDevices()).toHaveLength(1)
+    })
+
+    it('ignores events from wrong pubkey', () => {
+      const ownerKey = generateSecretKey()
+      const ownerPubkey = getPublicKey(ownerKey)
+      const wrongKey = generateSecretKey()
+
+      const event = finalizeEvent({
+        kind: INVITE_LIST_KIND,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [['d', 'double-ratchet/invite-list']],
+        content: '',
+      }, wrongKey)
+
+      const onList = vi.fn()
+      let capturedCallback: (event: any) => void
+
+      const mockSubscribe = vi.fn().mockImplementation((filter: any, callback: (event: any) => void) => {
+        capturedCallback = callback
+        return () => {}
+      })
+
+      InviteList.subscribe(ownerPubkey, mockSubscribe, onList)
+      capturedCallback!(event)
+
+      expect(onList).not.toHaveBeenCalled()
+    })
+
+    it('ignores older events than previously received', () => {
+      const ownerKey = generateSecretKey()
+      const ownerPubkey = getPublicKey(ownerKey)
+      const now = Math.floor(Date.now() / 1000)
+
+      const newerEvent = finalizeEvent({
+        kind: INVITE_LIST_KIND,
+        created_at: now + 100,
+        tags: [['d', 'double-ratchet/invite-list']],
+        content: '',
+      }, ownerKey)
+
+      const olderEvent = finalizeEvent({
+        kind: INVITE_LIST_KIND,
+        created_at: now,
+        tags: [['d', 'double-ratchet/invite-list']],
+        content: '',
+      }, ownerKey)
+
+      const onList = vi.fn()
+      let capturedCallback: (event: any) => void
+
+      const mockSubscribe = vi.fn().mockImplementation((filter: any, callback: (event: any) => void) => {
+        capturedCallback = callback
+        return () => {}
+      })
+
+      InviteList.subscribe(ownerPubkey, mockSubscribe, onList)
+
+      // Receive newer event first
+      capturedCallback!(newerEvent)
+      expect(onList).toHaveBeenCalledTimes(1)
+
+      // Receive older event - should be ignored
+      capturedCallback!(olderEvent)
+      expect(onList).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns unsubscribe function', () => {
+      const ownerPubkey = getPublicKey(generateSecretKey())
+      const unsubFn = vi.fn()
+      const mockSubscribe = vi.fn().mockReturnValue(unsubFn)
+
+      const unsub = InviteList.subscribe(ownerPubkey, mockSubscribe, vi.fn())
+      expect(typeof unsub).toBe('function')
+      unsub()
+      expect(unsubFn).toHaveBeenCalled()
+    })
+  })
+
   describe('full handshake', () => {
     it('accept + listen establishes working session', async () => {
       const ownerKey = generateSecretKey()

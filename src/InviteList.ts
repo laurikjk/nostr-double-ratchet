@@ -1,4 +1,4 @@
-import { VerifiedEvent, UnsignedEvent, verifyEvent } from "nostr-tools";
+import { VerifiedEvent, UnsignedEvent, verifyEvent, Filter } from "nostr-tools";
 import { INVITE_LIST_KIND, INVITE_RESPONSE_KIND, NostrSubscribe, Unsubscribe } from "./types";
 import { Session } from "./Session";
 import {
@@ -113,6 +113,48 @@ export class InviteList {
       deviceId: generateDeviceId(),
       label,
     };
+  }
+
+  /**
+   * Subscribe to a user's InviteList updates.
+   * Returns an unsubscribe function.
+   */
+  static subscribe(
+    userPubkey: string,
+    nostrSubscribe: NostrSubscribe,
+    onList: (list: InviteList) => void
+  ): Unsubscribe {
+    const filter: Filter = {
+      kinds: [INVITE_LIST_KIND],
+      authors: [userPubkey],
+      "#d": ["double-ratchet/invite-list"],
+    };
+
+    let lastCreatedAt = 0;
+
+    const seenEventIds = new Set<string>();
+
+    return nostrSubscribe(filter, (event) => {
+      if (event.pubkey !== userPubkey) {
+        return;
+      }
+      // Dedupe by event ID
+      if (seenEventIds.has(event.id)) {
+        return;
+      }
+      seenEventIds.add(event.id);
+      // Only process newer events (using < to allow same-second updates)
+      if (event.created_at < lastCreatedAt) {
+        return;
+      }
+      try {
+        const list = InviteList.fromEvent(event);
+        lastCreatedAt = event.created_at;
+        onList(list);
+      } catch {
+        // Ignore invalid events
+      }
+    });
   }
 
   /**
