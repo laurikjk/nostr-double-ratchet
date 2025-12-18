@@ -85,9 +85,14 @@ export type EventCallback = (_event: Rumor, _outerEvent: VerifiedEvent) => void;
 export const MESSAGE_EVENT_KIND = 1060;
 
 /**
- * Invite event kind
+ * Invite event kind (per-device, addressable)
  */
 export const INVITE_EVENT_KIND = 30078;
+
+/**
+ * Invite list event kind (per-user, replaceable)
+ */
+export const INVITE_LIST_KIND = 10078;
 
 export const INVITE_RESPONSE_KIND = 1059;
 
