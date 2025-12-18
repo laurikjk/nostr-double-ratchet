@@ -453,6 +453,9 @@ export class SessionManager {
     // Subscribe to device removals (both old tombstones and InviteList removals)
     this.attachInviteTombstoneSubscription(userPubkey)
 
+    // Track devices currently being accepted to prevent duplicate processing
+    const pendingAccepts = new Set<string>()
+
     // Accept an invite for a specific device
     const acceptDeviceInvite = async (
       deviceId: string,
@@ -463,6 +466,10 @@ export class SessionManager {
       if (userRecord.devices.has(deviceId)) {
         return // Already have session for this device
       }
+      if (pendingAccepts.has(deviceId)) {
+        return // Already processing this device
+      }
+      pendingAccepts.add(deviceId)
 
       // Create a temporary InviteList to use its accept method
       const tempList = InviteList.create(owner)
@@ -493,6 +500,8 @@ export class SessionManager {
         await this.sendMessageHistory(userPubkey, deviceId)
       } catch (error) {
         console.error(`Failed to accept invite for device ${deviceId}:`, error)
+      } finally {
+        pendingAccepts.delete(deviceId)
       }
     }
 
